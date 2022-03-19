@@ -1,6 +1,6 @@
-# Getting Started with Create React App
+# lemma
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+https://user-images.githubusercontent.com/5009316/159114503-fc0eec1f-40f2-4843-9281-f305a4baa746.mov
 
 ## Available Scripts
 

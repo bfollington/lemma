@@ -36,3 +36,17 @@
     transform: rotate(360deg);
   }
 }
+
+.cell-wrapper {
+  border: 1px solid transparent;
+}
+
+.cell-wrapper:hover {
+  background-color: #444;
+  border-color: #666;
+}
+
+.cell-wrapper--selected {
+  background-color: #0097a7;
+  border-color: cyan;
+}

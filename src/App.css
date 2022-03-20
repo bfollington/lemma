@@ -46,7 +46,13 @@
   border-color: #666;
 }
 
+.cell-wrapper--cursor {
+  background-color: #006064;
+  border-color: #0097a7;
+}
+
 .cell-wrapper--selected {
   background-color: #0097a7;
   border-color: cyan;
 }
+

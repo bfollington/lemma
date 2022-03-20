@@ -28,11 +28,12 @@ function renderCell(cell: Cell, col: number, row: number, zoom: number) {
 type CellWrapperProps = {
   zoom: number
   selected: boolean
+  cursor: boolean
   children: ReactNode
 }
 
-function CellWrapper({children, selected, zoom}: CellWrapperProps) {
-  const classes = ['cell-wrapper', selected && 'cell-wrapper--selected'].filter(s => s).reduce((s, acc) => acc + ' ' + String(s)) || ''
+function CellWrapper({children, selected, cursor, zoom}: CellWrapperProps) {
+  const classes = ['cell-wrapper', selected && 'cell-wrapper--selected', cursor && 'cell-wrapper--cursor'].filter(s => s).reduce((s, acc) => acc + ' ' + String(s)) || ''
   return <td className={classes} style={{width: `${zoom}px`, height: `${zoom}px`}}>{children}</td>
 }
 
@@ -42,7 +43,9 @@ const inputMap = {
     left: [keycode(KEYS.left_arrow), keycode(KEYS.h)],
     up: [keycode(KEYS.up_arrow), keycode(KEYS.k)],
     down: [keycode(KEYS.down_arrow), keycode(KEYS.j)],
-    shift: [keycode(KEYS.shift)]
+    shift: [keycode(KEYS.shift)],
+    select: [keycode(KEYS.s), keycode(KEYS.v)],
+    exit: [keycode(KEYS.escape), keycode(KEYS.space), keycode(KEYS.q)]
   },
   axes: {}
 }
@@ -65,10 +68,17 @@ function rectContains(rect: SelectionRect, cellPath: string) {
   return true
 }
 
+type EditingModes =
+  | 'normal'
+  | 'select'
+  | 'move'
+  | 'duplicate'
+  | 'duplicate-as-reference'
 
 function App() {
-  const cols = ['A', 'B', 'C', 'D', 'E']
-  const rows = [0, 1, 2, 3, 4]
+  const size = 16
+  const cols = [...Array(size)].map((_, i) => String.fromCharCode('A'.charCodeAt(0) + i))
+  const rows = [...Array(size)].map((_, i) => i)
   const g = React.useMemo(() => ({
     cells: rows.map(r => cols.map(c => Math.random() < 0.3 ? cell(`${c}${r}`) : undefined))
   }), [])
@@ -80,7 +90,8 @@ function App() {
   const [shiftHeld, setShiftHeld] = React.useState(false)
 
   const [cursor, setCursor] = React.useState([0, 0])
-  const [selectionRect, setSelectionRect] = React.useState<SelectionRect | undefined>({ startCol:0, endCol: 0, startRow: 0, endRow: 0 })
+  const [selectionRect, setSelectionRect] = React.useState<SelectionRect | undefined>(undefined)
+  const [mode, setMode] = React.useState<EditingModes>('normal')
 
   useButtonPressed(inputMap, 'shift', () => {
     setShiftHeld(true)
@@ -90,57 +101,78 @@ function App() {
     setShiftHeld(false)
   })
 
-  const onRight = useCallback(() => {
-    setCursor([cursor[0] + 1, cursor[1]])
+  useButtonPressed(inputMap, 'select', () => {
+    if (mode !== 'normal') return
 
-    if (selectionRect) {
-      if (shiftHeld) {
+    setMode('select')
+    setSelectionRect({ startCol: cursor[0], endCol: cursor[0], startRow: cursor[1], endRow: cursor[1] })
+  })
+
+  useButtonPressed(inputMap, 'exit', () => {
+    if (mode === 'normal') return
+
+    setMode('normal')
+  })
+
+  const onRight = useCallback(() => {
+
+    if (mode === 'select' && selectionRect) {
+      if (!shiftHeld) {
         setSelectionRect({...selectionRect, startCol: selectionRect.startCol + 1, endCol: selectionRect.endCol + 1 })
+        setCursor([cursor[0] + 1, cursor[1]])
       } else {
         setSelectionRect({...selectionRect, endCol: selectionRect.endCol + 1 })
       }
+    } else {
+      setCursor([cursor[0] + 1, cursor[1]])
     }
   }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
 
   useButtonPressed(inputMap, 'right', onRight)
 
   const onLeft = useCallback(() => {
-    setCursor([cursor[0] - 1, cursor[1]])
 
-    if (selectionRect) {
-      if (shiftHeld) {
+    if (mode === 'select' && selectionRect) {
+      if (!shiftHeld) {
         setSelectionRect({...selectionRect, startCol: selectionRect.startCol - 1, endCol: selectionRect.endCol - 1 })
+        setCursor([cursor[0] - 1, cursor[1]])
       } else {
         setSelectionRect({...selectionRect, endCol: selectionRect.endCol - 1 })
       }
+    } else {
+      setCursor([cursor[0] - 1, cursor[1]])
     }
   }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
 
   useButtonPressed(inputMap, 'left', onLeft)
 
   const onDown = useCallback(() => {
-    setCursor([cursor[0], cursor[1] + 1])
 
-    if (selectionRect) {
-      if (shiftHeld) {
+    if (mode === 'select' && selectionRect) {
+      if (!shiftHeld) {
         setSelectionRect({...selectionRect, startRow: selectionRect.startRow + 1, endRow: selectionRect.endRow + 1 })
+        setCursor([cursor[0], cursor[1] + 1])
       } else {
         setSelectionRect({...selectionRect, endRow: selectionRect.endRow + 1 })
       }
+    } else {
+      setCursor([cursor[0], cursor[1] + 1])
     }
   }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
 
   useButtonPressed(inputMap, 'down', onDown)
 
   const onUp = useCallback(() => {
-    setCursor([cursor[0], cursor[1] - 1])
 
-    if (selectionRect) {
-      if (shiftHeld) {
+    if (mode === 'select' && selectionRect) {
+      if (!shiftHeld) {
         setSelectionRect({...selectionRect, startRow: selectionRect.startRow - 1, endRow: selectionRect.endRow - 1 })
+        setCursor([cursor[0], cursor[1] - 1])
       } else {
         setSelectionRect({...selectionRect, endRow: selectionRect.endRow - 1 })
       }
+    } else {
+      setCursor([cursor[0], cursor[1] - 1])
     }
   }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
 
@@ -150,6 +182,7 @@ function App() {
   return (
     <div className="App">
       <button onClick={() => setZoom(zoom + 8)}>+</button>{zoom}<button onClick={() => setZoom(zoom - 8)}>-</button>
+      {mode}
       <table>
         <thead>
           <tr><th></th> {cols.map(c => <th key={c}>{c}</th>)} </tr>
@@ -159,8 +192,10 @@ function App() {
             <td>{ir}</td>
             {cols.map((_, ic) => {
               const cell = g.cells[ir][ic]
-                return <CellWrapper zoom={zoom} selected={!!selectionRect && rectContains(selectionRect, toPath(ic, ir))
-} key={ic}>{cell && renderCell(cell, ic, ir, zoom)}</CellWrapper>
+              const selected = mode === 'select' && !!selectionRect && rectContains(selectionRect, toPath(ic, ir))
+              const cursorOver = ic === cursor[0] && ir === cursor[1]
+
+              return <CellWrapper zoom={zoom} cursor={cursorOver} selected={selected} key={ic}>{cell && renderCell(cell, ic, ir, zoom)}</CellWrapper>
             })}
           </tr>)}
         </tbody>

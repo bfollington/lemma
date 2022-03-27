@@ -36,7 +36,7 @@ export function resolveRef(grid: Grid, ref: RefT) {
     return
   }
 
-  const { type, path } = ref;
+  const { path } = ref;
   const [x, y] = splitPathCode(path)
 
   return grid.cells[y][x]

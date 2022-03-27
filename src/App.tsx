@@ -1,10 +1,12 @@
-import React, { ReactNode, useCallback } from 'react';
+import React, { ReactNode, useCallback, useEffect } from 'react';
 import { keycode, useButtonPressed, useButtonReleased } from 'use-control/lib';
 import KEYS from 'use-control/lib/keys';
 import './App.css';
-import { findRightmost, translate } from './grid';
-import { cell, resolveRef, splitPathCode, toPath } from './refs';
+import { getSelectedCells, rectContains, resizeRect, translateRect, translateSheet } from './rect';
+import { cell, splitPathCode, toPath } from './refs';
+import { useSheet, useSheetEditor } from './state';
 import { Cell, IdeaCell, IdeaCellT } from './types';
+import { getSubsheet } from './rect'
 
 function IdeaCellView({ path, cell, zoom }: { path: string, cell: IdeaCellT, zoom: number }) {
   return <div style={{backgroundColor: '#7e57c2', textAlign: 'left', verticalAlign: 'top', height: '100%', padding: '4px', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '12px'}}>
@@ -45,53 +47,51 @@ const inputMap = {
     down: [keycode(KEYS.down_arrow), keycode(KEYS.j)],
     shift: [keycode(KEYS.shift)],
     select: [keycode(KEYS.s), keycode(KEYS.v)],
+    delete: [keycode(KEYS.d)],
+    move: [keycode(KEYS.m)],
+    confirm: [keycode(KEYS.enter)],
+    paste: [keycode(KEYS.p)],
     exit: [keycode(KEYS.escape), keycode(KEYS.space), keycode(KEYS.q)]
   },
   axes: {}
 }
 
-type SelectionRect = {
-  startCol: number,
-  endCol: number,
-  startRow: number,
-  endRow: number
-}
 
-function rectContains(rect: SelectionRect, cellPath: string) {
-  const [col, row] = splitPathCode(cellPath)
-
-  if (col < rect.startCol) return false
-  if (col > rect.endCol) return false
-  if (row < rect.startRow) return false
-  if (row > rect.endRow) return false
-
-  return true
-}
-
-type EditingModes =
-  | 'normal'
-  | 'select'
-  | 'move'
-  | 'duplicate'
-  | 'duplicate-as-reference'
 
 function App() {
   const size = 16
   const cols = [...Array(size)].map((_, i) => String.fromCharCode('A'.charCodeAt(0) + i))
   const rows = [...Array(size)].map((_, i) => i)
-  const g = React.useMemo(() => ({
-    cells: rows.map(r => cols.map(c => Math.random() < 0.3 ? cell(`${c}${r}`) : undefined))
-  }), [])
 
-  console.log("A0", splitPathCode("A0"))
-  console.log("A1", resolveRef(g, { type: 'text', path: 'A1' }))
+  const cursor = useSheetEditor(ed => ed.cursor)
+  const setCursor = useSheetEditor(ed => ed.setCursor)
+  const mode = useSheetEditor(ed => ed.mode)
+  const setMode = useSheetEditor(ed => ed.setMode)
+  const selection = useSheetEditor(ed => ed.selection)
+  const setSelection = useSheetEditor(ed => ed.setSelection)
+  const yanked = useSheetEditor(ed => ed.yanked)
+  const setYanked = useSheetEditor(ed => ed.setYanked)
+  const clearYanked = useSheetEditor(ed => ed.clearYanked)
+
+  const sheet = useSheet(s => s.sheet)
+  const setCell = useSheet(s => s.setCell)
+  const setCells = useSheet(s => s.setCells)
+    /* const clearCell = useSheet(s => s.clearCell) */
+  const clearCells = useSheet(s => s.clearCells)
+
+  useEffect(() => {
+    for (let x = 0; x < size; x++) {
+      for (let y = 0; y < size; y++) {
+        if (Math.random() < 0.3) {
+          setCell(toPath(x, y), cell(`[${x} ${y}]`))
+        }
+      }
+    }
+  }, [setCell])
 
   const [zoom, setZoom] = React.useState(128)
   const [shiftHeld, setShiftHeld] = React.useState(false)
 
-  const [cursor, setCursor] = React.useState([0, 0])
-  const [selectionRect, setSelectionRect] = React.useState<SelectionRect | undefined>(undefined)
-  const [mode, setMode] = React.useState<EditingModes>('normal')
 
   useButtonPressed(inputMap, 'shift', () => {
     setShiftHeld(true)
@@ -104,8 +104,8 @@ function App() {
   useButtonPressed(inputMap, 'select', () => {
     if (mode !== 'normal') return
 
+    setSelection({ startCol: cursor.col, endCol: cursor.col, startRow: cursor.row, endRow: cursor.row })
     setMode('select')
-    setSelectionRect({ startCol: cursor[0], endCol: cursor[0], startRow: cursor[1], endRow: cursor[1] })
   })
 
   useButtonPressed(inputMap, 'exit', () => {
@@ -114,70 +114,70 @@ function App() {
     setMode('normal')
   })
 
-  const onRight = useCallback(() => {
+  useButtonPressed(inputMap, 'delete', () => {
+    if (mode !== 'select' || !selection) return
 
-    if (mode === 'select' && selectionRect) {
-      if (!shiftHeld) {
-        setSelectionRect({...selectionRect, startCol: selectionRect.startCol + 1, endCol: selectionRect.endCol + 1 })
-        setCursor([cursor[0] + 1, cursor[1]])
+    const cells = getSelectedCells(selection)
+    clearCells(cells)
+  })
+
+  useButtonPressed(inputMap, 'move', () => {
+    if (mode !== 'select' || !selection) return
+
+    setYanked({...selection})
+    setMode('select-destination')
+  })
+
+  useButtonPressed(inputMap, 'confirm', () => {
+    if (mode !== 'select-destination' || !yanked) return
+    debugger
+
+    let s = getSubsheet(sheet, yanked)
+    let [oCol, oRow] = splitPathCode(s.origin)
+
+    s = translateSheet(s, cursor.col - oCol, cursor.row - oRow)
+    setCells(s)
+
+    setMode('select-destination')
+    clearYanked()
+  })
+
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+        ev.preventDefault()
+    }
+
+    document.addEventListener('keydown', onKey)
+
+    return () => {
+        document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  const onMove = useCallback((dCols: number, dRows: number) => {
+    const isSelecting = mode === 'select' || mode === 'select-destination'
+    if (isSelecting && selection) {
+      if (shiftHeld && mode === 'select') {
+        setSelection(resizeRect(selection, dCols, dRows))
       } else {
-        setSelectionRect({...selectionRect, endCol: selectionRect.endCol + 1 })
+        setSelection(translateRect(selection, dCols, dRows))
+        setCursor(cursor.col + dCols, cursor.row + dRows)
       }
     } else {
-      setCursor([cursor[0] + 1, cursor[1]])
+      setCursor(cursor.col + dCols, cursor.row + dRows)
     }
-  }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
+  }, [selection, mode, cursor, setSelection, shiftHeld, setCursor])
+
+  const onRight = useCallback(() => onMove(1, 0), [onMove])
+  const onLeft = useCallback(() => onMove(-1, 0), [onMove])
+  const onUp = useCallback(() => onMove(0, -1), [onMove])
+  const onDown = useCallback(() => onMove(0, 1), [onMove])
 
   useButtonPressed(inputMap, 'right', onRight)
-
-  const onLeft = useCallback(() => {
-
-    if (mode === 'select' && selectionRect) {
-      if (!shiftHeld) {
-        setSelectionRect({...selectionRect, startCol: selectionRect.startCol - 1, endCol: selectionRect.endCol - 1 })
-        setCursor([cursor[0] - 1, cursor[1]])
-      } else {
-        setSelectionRect({...selectionRect, endCol: selectionRect.endCol - 1 })
-      }
-    } else {
-      setCursor([cursor[0] - 1, cursor[1]])
-    }
-  }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
-
   useButtonPressed(inputMap, 'left', onLeft)
-
-  const onDown = useCallback(() => {
-
-    if (mode === 'select' && selectionRect) {
-      if (!shiftHeld) {
-        setSelectionRect({...selectionRect, startRow: selectionRect.startRow + 1, endRow: selectionRect.endRow + 1 })
-        setCursor([cursor[0], cursor[1] + 1])
-      } else {
-        setSelectionRect({...selectionRect, endRow: selectionRect.endRow + 1 })
-      }
-    } else {
-      setCursor([cursor[0], cursor[1] + 1])
-    }
-  }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
-
-  useButtonPressed(inputMap, 'down', onDown)
-
-  const onUp = useCallback(() => {
-
-    if (mode === 'select' && selectionRect) {
-      if (!shiftHeld) {
-        setSelectionRect({...selectionRect, startRow: selectionRect.startRow - 1, endRow: selectionRect.endRow - 1 })
-        setCursor([cursor[0], cursor[1] - 1])
-      } else {
-        setSelectionRect({...selectionRect, endRow: selectionRect.endRow - 1 })
-      }
-    } else {
-      setCursor([cursor[0], cursor[1] - 1])
-    }
-  }, [selectionRect, cursor, setSelectionRect, setCursor, shiftHeld])
-
   useButtonPressed(inputMap, 'up', onUp)
-
+  useButtonPressed(inputMap, 'down', onDown)
 
   return (
     <div className="App">
@@ -191,9 +191,9 @@ function App() {
           {rows.map(ir => <tr key={ir}>
             <td>{ir}</td>
             {cols.map((_, ic) => {
-              const cell = g.cells[ir][ic]
-              const selected = mode === 'select' && !!selectionRect && rectContains(selectionRect, toPath(ic, ir))
-              const cursorOver = ic === cursor[0] && ir === cursor[1]
+              const cell = sheet.cells[toPath(ic, ir)]
+              const selected = mode === 'select' && !!selection && rectContains(selection, toPath(ic, ir))
+              const cursorOver = ic === cursor.col && ir === cursor.row
 
               return <CellWrapper zoom={zoom} cursor={cursorOver} selected={selected} key={ic}>{cell && renderCell(cell, ic, ir, zoom)}</CellWrapper>
             })}

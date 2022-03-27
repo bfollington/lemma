@@ -6,29 +6,7 @@ export function findRightmost(paths: string[]) {
     return toPath(col, row)
 }
 
-export type Direction =
-    | 'up'
-    | 'down'
-    | 'left'
-    | 'right'
-
-export function translate(path: string, dir: Direction) {
+export function translate(path: string, cols: number, rows: number) {
     let [col, row] = splitPathCode(path)
-
-    switch (dir) {
-        case 'right':
-            col += 1
-            break
-        case 'left':
-            col -= 1
-            break
-        case 'up':
-            row -= 1
-            break
-        case 'down':
-            row += 1
-            break
-    }
-
-    return toPath(col, row)
+    return toPath(col + cols, row + rows)
 }

@@ -14,6 +14,10 @@ import { useSheet, useSheetEditor } from './state'
 import { Cell, IdeaCell, IdeaCellT } from './types'
 import { getSubsheet } from './rect'
 
+function cursorToPath({ row, col }: { row: number; col: number }) {
+  return toPath(col, row)
+}
+
 function IdeaCellView({
   path,
   cell,
@@ -93,10 +97,12 @@ const inputMap = {
     down: [keycode(KEYS.down_arrow), keycode(KEYS.j)],
     shift: [keycode(KEYS.shift)],
     select: [keycode(KEYS.s), keycode(KEYS.v)],
-    delete: [keycode(KEYS.d)],
     move: [keycode(KEYS.m)],
     confirm: [keycode(KEYS.enter)],
+    yank: [keycode(KEYS.y)],
     paste: [keycode(KEYS.p)],
+    clear: [keycode(KEYS.x)],
+    change: [keycode(KEYS.c)],
     exit: [keycode(KEYS.escape), keycode(KEYS.space), keycode(KEYS.q)],
   },
   axes: {},
@@ -162,18 +168,70 @@ function App() {
     setMode('normal')
   })
 
-  useButtonPressed(inputMap, 'delete', () => {
-    if (mode !== 'select' || !selection) return
+  useButtonPressed(inputMap, 'move', () => {
+    switch (mode) {
+      case 'select':
+        if (!selection) return
 
-    const cells = getSelectedCells(selection)
-    clearCells(cells)
+        setYanked({ ...selection })
+        setMode('select-destination')
+        break
+      case 'normal':
+        setYanked({
+          startCol: cursor.col,
+          endCol: cursor.col,
+          startRow: cursor.row,
+          endRow: cursor.row,
+        })
+        setMode('select-destination')
+        break
+    }
   })
 
-  useButtonPressed(inputMap, 'move', () => {
-    if (mode !== 'select' || !selection) return
+  useButtonPressed(inputMap, 'yank', () => {
+    switch (mode) {
+      case 'select':
+        if (!selection) return
 
-    setYanked({ ...selection })
-    setMode('select-destination')
+        setYanked({ ...selection })
+        setMode('normal')
+        break
+      case 'normal':
+        setYanked({
+          startCol: cursor.col,
+          endCol: cursor.col,
+          startRow: cursor.row,
+          endRow: cursor.row,
+        })
+        break
+    }
+  })
+
+  useButtonPressed(inputMap, 'paste', () => {
+    if (mode !== 'normal' || !yanked) return
+
+    let s = getSubsheet(sheet, yanked)
+    let [oCol, oRow] = splitPathCode(s.origin)
+
+    s = translateSheet(s, cursor.col - oCol, cursor.row - oRow)
+    setCells(s)
+  })
+
+  useButtonPressed(inputMap, 'change', () => {
+    if (mode !== 'normal') return
+
+    const newContents = prompt('contents')
+    setCell(cursorToPath(cursor), cell(newContents || ''))
+  })
+
+  useButtonPressed(inputMap, 'clear', () => {
+    if (mode !== 'normal' && mode !== 'select') return
+
+    if (mode === 'select' && selection) {
+      clearCells(getSelectedCells(selection))
+    } else {
+      clearCells([toPath(cursor.col, cursor.row)])
+    }
   })
 
   useButtonPressed(inputMap, 'confirm', () => {
@@ -186,6 +244,7 @@ function App() {
     setCells(s)
 
     setMode('normal')
+    clearCells(getSelectedCells(yanked))
     clearYanked()
   })
 

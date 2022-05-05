@@ -1,11 +1,11 @@
-import { Grid, Ref, RefT } from "./types";
+import { Grid, Ref, RefT } from './types'
 
 export function toPath(col: number, row: number) {
   return String.fromCharCode('A'.charCodeAt(0) + col) + String(row)
 }
 
 export function splitPathCode(path: string) {
-  let i = 0;
+  let i = 0
   let colCode = ''
   let rowCode = ''
   while (i < path.length) {
@@ -14,7 +14,7 @@ export function splitPathCode(path: string) {
     } else {
       rowCode += path[i]
     }
-    i++;
+    i++
   }
 
   let column = 0
@@ -30,13 +30,13 @@ export function splitPathCode(path: string) {
 
 export function resolveRef(grid: Grid, ref: RefT) {
   try {
-    Ref.check(ref);
+    Ref.check(ref)
   } catch (e) {
     console.error(e)
     return
   }
 
-  const { path } = ref;
+  const { path } = ref
   const [x, y] = splitPathCode(path)
 
   return grid.cells[y][x]
@@ -45,7 +45,7 @@ export function resolveRef(grid: Grid, ref: RefT) {
 export function ref(path: string, type: string) {
   return {
     path,
-    type
+    type,
   }
 }
 
@@ -54,7 +54,7 @@ export function cell(t: string) {
     contents: {
       type: 'idea',
       body: t,
-      extends: [ref('A0', 'idea')]
-    }
+      extends: [ref('A0', 'idea')],
+    },
   }
 }

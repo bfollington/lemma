@@ -130,7 +130,6 @@ function App() {
 
   useButtonPressed(inputMap, 'confirm', () => {
     if (mode !== 'select-destination' || !yanked) return
-    debugger
 
     let s = getSubsheet(sheet, yanked)
     let [oCol, oRow] = splitPathCode(s.origin)
@@ -138,7 +137,7 @@ function App() {
     s = translateSheet(s, cursor.col - oCol, cursor.row - oRow)
     setCells(s)
 
-    setMode('select-destination')
+    setMode('normal')
     clearYanked()
   })
 
